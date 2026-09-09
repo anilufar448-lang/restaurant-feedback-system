@@ -861,19 +861,7 @@ export default function App() {
       <style>{FONTS_CSS}</style>
       {mode === "customer" ? (
         <div style={{ maxWidth: 480, margin: "0 auto", background: T.paper, minHeight: 600, boxShadow: `0 0 0 1px ${T.line}` }}>
-          <div style={{ padding: "10px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", background: T.ink, gap: 8 }}>
-            <button onClick={() => setMode("owner")} title={lang === "ru" ? "Назад" : lang === "en" ? "Back" : "Orqaga"}
-              style={{ background: "transparent", border: "none", color: T.paper, cursor: "pointer", display: "flex", alignItems: "center", padding: 4 }}>
-              <ChevronLeft size={20} />
-            </button>
-            <select value={custRestaurant} onChange={(e) => setCustRestaurant(e.target.value)}
-              style={{ background: "transparent", color: T.paper, border: "none", fontSize: 12, fontWeight: 600 }}>
-              {data.restaurants.map((r) => <option key={r.id} value={r.id} style={{ color: "#000" }}>{r.name}</option>)}
-            </select>
-            <select value={custTable} onChange={(e) => setCustTable(+e.target.value)}
-              style={{ background: "transparent", color: T.paper, border: "none", fontSize: 12, fontWeight: 600 }}>
-              {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => <option key={n} value={n} style={{ color: "#000" }}>{t.table} {n}</option>)}
-            </select>
+          <div style={{ padding: "10px 20px", display: "flex", justifyContent: "flex-end", alignItems: "center", background: T.ink, gap: 8 }}>
             <div style={{ display: "flex", gap: 4 }}>
               {["uz", "ru", "en"].map((l) => (
                 <button key={l} onClick={() => setLang(l)}
