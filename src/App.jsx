@@ -265,12 +265,16 @@ function buildSeedData() {
 }
 
 /* ---------------------------------------------------------------- */
-/* STORAGE HELPERS                                                   */
+/* STORAGE HELPERS — Supabase orqali (barcha qurilmalarda umumiy)     */
 /* ---------------------------------------------------------------- */
 const STORE_KEY = "rfs-data-v1";
 const AUTH_SESSION_KEY = "rfs-auth-v1";
 
-/* Egasi paneliga kirish uchun login va parol. O'zgartirish uchun shu yerni tahrirlang. */
+/* Supabase loyihangiz ma'lumotlari */
+const SUPABASE_URL = "https://ludrtyuklmxslptksidu.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_1OgsBL-caVxZ5dN1GxpH8w_jddisAxG";
+
+/* Egasi paneliga kirish uchun login va parol. Faqat bazada hali "users" bo'lmasa, birinchi marta shu qiymatlar bilan admin yaratiladi. */
 const OWNER_CREDENTIALS = {
   username: "admin",
   password: "restoran2026",
@@ -279,28 +283,48 @@ const OWNER_CREDENTIALS = {
 const PERMISSION_TABS = ["dashboard", "feedback", "complaints", "employees", "restaurants", "qr"];
 const MAX_USERS = 5;
 
+function ensureUsers(parsed) {
+  if (!parsed.users || !parsed.users.length) {
+    parsed.users = [{
+      id: "u-admin", username: OWNER_CREDENTIALS.username, password: OWNER_CREDENTIALS.password,
+      role: "admin", permissions: Object.fromEntries(PERMISSION_TABS.map((k) => [k, true])),
+    }];
+  }
+  return parsed;
+}
+
 async function loadData() {
   try {
-    const raw = localStorage.getItem(STORE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (!parsed.users || !parsed.users.length) {
-        parsed.users = [{
-          id: "u-admin", username: OWNER_CREDENTIALS.username, password: OWNER_CREDENTIALS.password,
-          role: "admin", permissions: Object.fromEntries(PERMISSION_TABS.map((k) => [k, true])),
-        }];
-        try { localStorage.setItem(STORE_KEY, JSON.stringify(parsed)); } catch (e) {}
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/app_data?id=eq.main&select=data`, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+    });
+    if (res.ok) {
+      const rows = await res.json();
+      if (rows && rows[0] && rows[0].data) {
+        const parsed = ensureUsers(rows[0].data);
+        saveData(parsed);
+        return parsed;
       }
-      return parsed;
     }
-  } catch (e) { /* not found */ }
+  } catch (e) { /* tarmoq xatosi yoki jadval hali yo'q */ }
   const seed = buildSeedData();
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(seed)); } catch (e) {}
+  saveData(seed);
   return seed;
 }
 
 async function saveData(data) {
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch (e) {}
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/app_data`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates",
+      },
+      body: JSON.stringify({ id: "main", data, updated_at: new Date().toISOString() }),
+    });
+  } catch (e) { /* tarmoq xatosi */ }
 }
 
 /* ---------------------------------------------------------------- */
