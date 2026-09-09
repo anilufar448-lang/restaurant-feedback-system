@@ -1480,7 +1480,7 @@ function QrTab({ t, data, copiedId, setCopiedId }) {
   const tables = Array.from({ length: Math.min(restaurant.tables, 24) }, (_, i) => i + 1);
 
   const copyLink = (id, table) => {
-    const url = `https://feedback.example.com/${id}/table-${table}`;
+    const url = `https://restaurant-feedback-system-zeta.vercel.app/${id}/table-${table}`;
     if (navigator.clipboard) navigator.clipboard.writeText(url).catch(() => {});
     setCopiedId(`${id}-${table}`);
     setTimeout(() => setCopiedId(null), 1400);
@@ -1494,7 +1494,7 @@ function QrTab({ t, data, copiedId, setCopiedId }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 12 }}>
         {tables.map((n) => (
           <div key={n} style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 12, padding: 12, textAlign: "center" }}>
-            <div style={{ width: "100%", aspectRatio: "1", marginBottom: 8 }}><QrPattern url={`https://feedback.example.com/${restId}/table-${n}`} /></div>
+            <div style={{ width: "100%", aspectRatio: "1", marginBottom: 8 }}><QrPattern url={`https://restaurant-feedback-system-zeta.vercel.app/${restId}/table-${n}`} /></div>
             <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 8 }}>{t.table} {n}</div>
             <button onClick={() => copyLink(restId, n)}
               style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "6px 8px", borderRadius: 8, border: `1px solid ${T.line}`, background: "transparent", fontSize: 11.5, cursor: "pointer" }}>
