@@ -281,26 +281,26 @@ const MAX_USERS = 5;
 
 async function loadData() {
   try {
-    const res = await window.storage.get(STORE_KEY, true);
-    if (res && res.value) {
-      const parsed = JSON.parse(res.value);
+    const raw = localStorage.getItem(STORE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
       if (!parsed.users || !parsed.users.length) {
         parsed.users = [{
           id: "u-admin", username: OWNER_CREDENTIALS.username, password: OWNER_CREDENTIALS.password,
           role: "admin", permissions: Object.fromEntries(PERMISSION_TABS.map((k) => [k, true])),
         }];
-        try { await window.storage.set(STORE_KEY, JSON.stringify(parsed), true); } catch (e) {}
+        try { localStorage.setItem(STORE_KEY, JSON.stringify(parsed)); } catch (e) {}
       }
       return parsed;
     }
   } catch (e) { /* not found */ }
   const seed = buildSeedData();
-  try { await window.storage.set(STORE_KEY, JSON.stringify(seed), true); } catch (e) {}
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(seed)); } catch (e) {}
   return seed;
 }
 
 async function saveData(data) {
-  try { await window.storage.set(STORE_KEY, JSON.stringify(data), true); } catch (e) {}
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch (e) {}
 }
 
 /* ---------------------------------------------------------------- */
