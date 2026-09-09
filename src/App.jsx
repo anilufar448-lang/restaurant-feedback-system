@@ -3,7 +3,6 @@ import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
-import { supabase } from "./supabaseClient.js";
 import {
   LayoutDashboard, MessageSquare, AlertTriangle, Users, Building2,
   QrCode, Settings, Menu, X, Search, Filter, Download, Plus, Star,
@@ -263,21 +262,27 @@ function buildSeedData() {
 /* ---------------------------------------------------------------- */
 /* STORAGE HELPERS                                                   */
 /* ---------------------------------------------------------------- */
-const STORE_KEY = "rfs-data-v1"; // shared key so every device reads/writes the same row
+const STORE_KEY = "rfs-data-v1";
+const AUTH_SESSION_KEY = "rfs-auth-v1";
+
+/* Egasi paneliga kirish uchun login va parol. O'zgartirish uchun shu yerni tahrirlang. */
+const OWNER_CREDENTIALS = {
+  username: "admin",
+  password: "restoran2026",
+};
 
 async function loadData() {
   try {
-    const { data, error } = await supabase.from("store").select("value").eq("key", STORE_KEY).maybeSingle();
-    if (error) throw error;
-    if (data && data.value) return data.value;
-  } catch (e) { /* fall through to seed */ }
+    const res = await window.storage.get(STORE_KEY, true);
+    if (res && res.value) return JSON.parse(res.value);
+  } catch (e) { /* not found */ }
   const seed = buildSeedData();
-  try { await supabase.from("store").upsert({ key: STORE_KEY, value: seed }); } catch (e) {}
+  try { await window.storage.set(STORE_KEY, JSON.stringify(seed), true); } catch (e) {}
   return seed;
 }
 
 async function saveData(data) {
-  try { await supabase.from("store").upsert({ key: STORE_KEY, value: data }); } catch (e) {}
+  try { await window.storage.set(STORE_KEY, JSON.stringify(data), true); } catch (e) {}
 }
 
 /* ---------------------------------------------------------------- */
@@ -287,6 +292,73 @@ const fmt1 = (n) => (Number.isFinite(n) ? n.toFixed(2) : "—");
 const daysAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d; };
 const isWithinDays = (iso, n) => new Date(iso) >= daysAgo(n);
 const sameDay = (iso, d) => new Date(iso).toDateString() === d.toDateString();
+
+/* ---------------------------------------------------------------- */
+/* LOGIN SCREEN (owner panel uchun)                                   */
+/* ---------------------------------------------------------------- */
+const LOGIN_TXT = {
+  uz: { title: "Buharski Bulvar", subtitle: "Kirish uchun login va parolni kiriting", username: "Login", password: "Parol", submit: "Kirish", error: "Login yoki parol noto'g'ri", back: "← Fikr qoldirish sahifasiga qaytish" },
+  ru: { title: "Buharski Bulvar", subtitle: "Введите логин и пароль для входа", username: "Логин", password: "Пароль", submit: "Войти", error: "Неверный логин или пароль", back: "← Вернуться на страницу отзывов" },
+  en: { title: "Buharski Bulvar", subtitle: "Enter your login and password", username: "Username", password: "Password", submit: "Sign in", error: "Incorrect username or password", back: "← Back to feedback page" },
+};
+
+function LoginScreen({ lang, onSuccess, onBack }) {
+  const lt = LOGIN_TXT[lang] || LOGIN_TXT.uz;
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+
+  const submit = (e) => {
+    e.preventDefault();
+    if (username === OWNER_CREDENTIALS.username && password === OWNER_CREDENTIALS.password) {
+      try { sessionStorage.setItem(AUTH_SESSION_KEY, "1"); } catch (e) {}
+      setError("");
+      onSuccess();
+    } else {
+      setError(lt.error);
+    }
+  };
+
+  return (
+    <div style={{ minHeight: 600, display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", fontFamily: "'Inter', sans-serif", padding: 20 }}>
+      <style>{FONTS_CSS}</style>
+      <form onSubmit={submit} style={{ width: "100%", maxWidth: 340, background: T.paper, border: `1px solid ${T.line}`, borderRadius: 16, padding: 28 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+          <div style={{ width: 30, height: 30, borderRadius: 8, background: T.ink, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Sparkles size={15} color={T.amber} />
+          </div>
+          <div style={{ fontFamily: "'Fraunces', serif", fontWeight: 500, fontSize: 16, color: T.ink }}>{lt.title}</div>
+        </div>
+        <div style={{ fontSize: 12.5, color: T.slate, marginBottom: 20 }}>{lt.subtitle}</div>
+
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ fontSize: 12, fontWeight: 600, color: T.slate, display: "block", marginBottom: 6 }}>{lt.username}</label>
+          <input
+            autoFocus
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            style={{ width: "100%", padding: "10px 12px", borderRadius: 9, border: `1px solid ${T.line}`, fontSize: 14, boxSizing: "border-box" }}
+          />
+        </div>
+        <div style={{ marginBottom: 8 }}>
+          <label style={{ fontSize: 12, fontWeight: 600, color: T.slate, display: "block", marginBottom: 6 }}>{lt.password}</label>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            style={{ width: "100%", padding: "10px 12px", borderRadius: 9, border: `1px solid ${T.line}`, fontSize: 14, boxSizing: "border-box" }}
+          />
+        </div>
+
+        {error && <div style={{ color: "#c0392b", fontSize: 12.5, marginBottom: 10 }}>{error}</div>}
+
+        <button type="submit" style={{ width: "100%", padding: "11px 0", borderRadius: 9, border: "none", background: T.ink, color: T.paper, fontSize: 14, fontWeight: 600, cursor: "pointer", marginTop: 6 }}>
+          {lt.submit}
+        </button>
+      </form>
+    </div>
+  );
+}
 
 function StarRow({ value, onChange, size = 22 }) {
   return (
@@ -409,6 +481,9 @@ function CustomerFlow({ t, restaurants, employees, restaurantId, tableId, onSubm
             setEmpId(null); setEmpRating(0); setComment(""); setSatisfaction(null); setIssue(null); setDone(false);
           }} style={{ marginTop: 20, padding: "10px 20px", borderRadius: 10, border: "none", background: T.ink, color: T.paper, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
             {t.newFeedback}
+          </button>
+          <button onClick={onSwitchToOwner} style={{ marginTop: 10, background: "none", border: "none", color: T.slate, fontSize: 12.5, cursor: "pointer", textDecoration: "underline" }}>
+            {t.ownerView} →
           </button>
         </div>
       </div>
@@ -603,6 +678,9 @@ export default function App() {
   const [custRestaurant, setCustRestaurant] = useState(urlTarget ? urlTarget.restId : "r1");
   const [custTable, setCustTable] = useState(urlTarget ? urlTarget.table : 7);
   const [tab, setTab] = useState("dashboard");
+  const [isAuthed, setIsAuthed] = useState(() => {
+    try { return sessionStorage.getItem(AUTH_SESSION_KEY) === "1"; } catch (e) { return false; }
+  });
   const [isMobile, setIsMobile] = useState(typeof window !== "undefined" ? window.innerWidth < 860 : false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -620,20 +698,6 @@ export default function App() {
 
   useEffect(() => {
     loadData().then(setData);
-  }, []);
-
-  useEffect(() => {
-    const channel = supabase
-      .channel("store-changes")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "store", filter: `key=eq.${STORE_KEY}` },
-        (payload) => {
-          if (payload.new && payload.new.value) setData(payload.new.value);
-        }
-      )
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
   }, []);
 
   useEffect(() => {
@@ -733,10 +797,24 @@ export default function App() {
   }
 
   return (
-    <div style={{ fontFamily: "'Inter', sans-serif", background: T.canvas, color: T.ink, minHeight: 600 }}>
+    <div style={{
+      fontFamily: "'Inter', sans-serif", color: T.ink, minHeight: 600,
+      backgroundImage: "url('/hero-bg.jpg')", backgroundSize: "cover",
+      backgroundPosition: "center", backgroundRepeat: "no-repeat", backgroundAttachment: "fixed",
+    }}>
       <style>{FONTS_CSS}</style>
       {mode === "customer" ? (
         <div style={{ maxWidth: 480, margin: "0 auto", background: T.paper, minHeight: 600, boxShadow: `0 0 0 1px ${T.line}` }}>
+          <div style={{ padding: "10px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", background: T.ink }}>
+            <select value={custRestaurant} onChange={(e) => setCustRestaurant(e.target.value)}
+              style={{ background: "transparent", color: T.paper, border: "none", fontSize: 12, fontWeight: 600 }}>
+              {data.restaurants.map((r) => <option key={r.id} value={r.id} style={{ color: "#000" }}>{r.name}</option>)}
+            </select>
+            <select value={custTable} onChange={(e) => setCustTable(+e.target.value)}
+              style={{ background: "transparent", color: T.paper, border: "none", fontSize: 12, fontWeight: 600 }}>
+              {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => <option key={n} value={n} style={{ color: "#000" }}>{t.table} {n}</option>)}
+            </select>
+          </div>
           <CustomerFlow
             t={t}
             restaurants={data.restaurants}
@@ -747,6 +825,8 @@ export default function App() {
             onSwitchToOwner={() => setMode("owner")}
           />
         </div>
+      ) : !isAuthed ? (
+        <LoginScreen lang={lang} onSuccess={() => setIsAuthed(true)} />
       ) : (
         <OwnerShell
           t={t} lang={lang} setLang={setLang} data={data} tab={tab} setTab={setTab}
@@ -766,6 +846,10 @@ export default function App() {
           editEmployee={editEmployee}
           deleteEmployee={deleteEmployee}
           onSwitchToCustomer={() => setMode("customer")}
+          onLogout={() => {
+            try { sessionStorage.removeItem(AUTH_SESSION_KEY); } catch (e) {}
+            setIsAuthed(false);
+          }}
           copiedId={copiedId} setCopiedId={setCopiedId}
         />
       )}
@@ -778,7 +862,7 @@ export default function App() {
 /* ---------------------------------------------------------------- */
 function OwnerShell(props) {
   const { t, lang, setLang, data, tab, setTab, isMobile, moreOpen, setMoreOpen,
-    sidebarOpen, setSidebarOpen, onSwitchToCustomer } = props;
+    sidebarOpen, setSidebarOpen, onSwitchToCustomer, onLogout } = props;
 
   const NAV = [
     { id: "dashboard", label: t.dashboard, icon: LayoutDashboard },
@@ -817,6 +901,11 @@ function OwnerShell(props) {
             <button onClick={onSwitchToCustomer} style={{ width: "100%", textAlign: "left", padding: "9px 10px", borderRadius: 9, border: "none", background: "transparent", color: T.slate, fontSize: 12.5, cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}>
               <QrCode size={14} /> {t.customerView}
             </button>
+            {onLogout && (
+              <button onClick={onLogout} style={{ width: "100%", textAlign: "left", padding: "9px 10px", borderRadius: 9, border: "none", background: "transparent", color: T.slate, fontSize: 12.5, cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}>
+                <X size={14} /> {lang === "ru" ? "Выйти" : lang === "en" ? "Log out" : "Chiqish"}
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -867,6 +956,12 @@ function OwnerShell(props) {
               style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "13px 10px", borderRadius: 10, border: "none", background: "transparent", color: T.amberDeep, fontSize: 15, cursor: "pointer", marginTop: 6 }}>
               <QrCode size={18} /> {t.customerView}
             </button>
+            {onLogout && (
+              <button onClick={() => { onLogout(); setMoreOpen(false); }}
+                style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "13px 10px", borderRadius: 10, border: "none", background: "transparent", color: T.slate, fontSize: 15, cursor: "pointer", marginTop: 2 }}>
+                <X size={18} /> {lang === "ru" ? "Выйти" : lang === "en" ? "Log out" : "Chiqish"}
+              </button>
+            )}
           </div>
         </div>
       )}
