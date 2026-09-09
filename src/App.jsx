@@ -410,9 +410,6 @@ function CustomerFlow({ t, restaurants, employees, restaurantId, tableId, onSubm
           }} style={{ marginTop: 20, padding: "10px 20px", borderRadius: 10, border: "none", background: T.ink, color: T.paper, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
             {t.newFeedback}
           </button>
-          <button onClick={onSwitchToOwner} style={{ marginTop: 10, background: "none", border: "none", color: T.slate, fontSize: 12.5, cursor: "pointer", textDecoration: "underline" }}>
-            {t.ownerView} →
-          </button>
         </div>
       </div>
     );
