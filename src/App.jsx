@@ -1460,7 +1460,7 @@ function QrPattern({ url }) {
   }
   if (!matrix) return null;
   const n = matrix.length;
-  const quiet = 2;
+  const quiet = 4;
   const size = n + quiet * 2;
   return (
     <svg viewBox={`0 0 ${size} ${size}`} width="100%" height="100%" shapeRendering="crispEdges">
