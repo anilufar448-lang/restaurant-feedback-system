@@ -581,12 +581,28 @@ function EmployeeCard({ e, stats, t }) {
 /* ---------------------------------------------------------------- */
 /* MAIN APP                                                          */
 /* ---------------------------------------------------------------- */
+/* Parse "/restId/table-N" from the URL so a scanned QR opens straight
+   into the customer feedback flow for that table. */
+function parseUrlTarget() {
+  if (typeof window === "undefined") return null;
+  const parts = window.location.pathname.split("/").filter(Boolean);
+  if (parts.length >= 2) {
+    const restId = decodeURIComponent(parts[0]);
+    const tableMatch = parts[1].match(/^table-(\d+)$/);
+    if (tableMatch) {
+      return { restId, table: parseInt(tableMatch[1], 10) };
+    }
+  }
+  return null;
+}
+
 export default function App() {
+  const urlTarget = useMemo(() => parseUrlTarget(), []);
   const [data, setData] = useState(null);
   const [lang, setLang] = useState("uz");
-  const [mode, setMode] = useState("owner"); // owner | customer
-  const [custRestaurant, setCustRestaurant] = useState("r1");
-  const [custTable, setCustTable] = useState(7);
+  const [mode, setMode] = useState(urlTarget ? "customer" : "owner"); // owner | customer
+  const [custRestaurant, setCustRestaurant] = useState(urlTarget ? urlTarget.restId : "r1");
+  const [custTable, setCustTable] = useState(urlTarget ? urlTarget.table : 7);
   const [tab, setTab] = useState("dashboard");
   const [isMobile, setIsMobile] = useState(typeof window !== "undefined" ? window.innerWidth < 860 : false);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -1460,7 +1476,7 @@ function QrPattern({ url }) {
   }
   if (!matrix) return null;
   const n = matrix.length;
-  const quiet = 4;
+  const quiet = 2;
   const size = n + quiet * 2;
   return (
     <svg viewBox={`0 0 ${size} ${size}`} width="100%" height="100%" shapeRendering="crispEdges">
