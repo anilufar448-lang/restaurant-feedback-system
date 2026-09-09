@@ -256,7 +256,12 @@ function buildSeedData() {
     };
   });
 
-  return { employees, feedback, complaints, restaurants: RESTAURANTS };
+  const users = [{
+    id: "u-admin", username: OWNER_CREDENTIALS.username, password: OWNER_CREDENTIALS.password,
+    role: "admin", permissions: Object.fromEntries(PERMISSION_TABS.map((k) => [k, true])),
+  }];
+
+  return { employees, feedback, complaints, restaurants: RESTAURANTS, users };
 }
 
 /* ---------------------------------------------------------------- */
@@ -271,10 +276,23 @@ const OWNER_CREDENTIALS = {
   password: "restoran2026",
 };
 
+const PERMISSION_TABS = ["dashboard", "feedback", "complaints", "employees", "restaurants", "qr"];
+const MAX_USERS = 5;
+
 async function loadData() {
   try {
     const res = await window.storage.get(STORE_KEY, true);
-    if (res && res.value) return JSON.parse(res.value);
+    if (res && res.value) {
+      const parsed = JSON.parse(res.value);
+      if (!parsed.users || !parsed.users.length) {
+        parsed.users = [{
+          id: "u-admin", username: OWNER_CREDENTIALS.username, password: OWNER_CREDENTIALS.password,
+          role: "admin", permissions: Object.fromEntries(PERMISSION_TABS.map((k) => [k, true])),
+        }];
+        try { await window.storage.set(STORE_KEY, JSON.stringify(parsed), true); } catch (e) {}
+      }
+      return parsed;
+    }
   } catch (e) { /* not found */ }
   const seed = buildSeedData();
   try { await window.storage.set(STORE_KEY, JSON.stringify(seed), true); } catch (e) {}
@@ -302,7 +320,7 @@ const LOGIN_TXT = {
   en: { title: "Buharski Bulvar", subtitle: "Enter your login and password", username: "Username", password: "Password", submit: "Sign in", error: "Incorrect username or password", back: "← Back to feedback page" },
 };
 
-function LoginScreen({ lang, onSuccess, onBack }) {
+function LoginScreen({ lang, users, onSuccess }) {
   const lt = LOGIN_TXT[lang] || LOGIN_TXT.uz;
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -310,10 +328,11 @@ function LoginScreen({ lang, onSuccess, onBack }) {
 
   const submit = (e) => {
     e.preventDefault();
-    if (username === OWNER_CREDENTIALS.username && password === OWNER_CREDENTIALS.password) {
-      try { sessionStorage.setItem(AUTH_SESSION_KEY, "1"); } catch (e) {}
+    const match = (users || []).find((u) => u.username === username && u.password === password);
+    if (match) {
+      try { sessionStorage.setItem(AUTH_SESSION_KEY, match.id); } catch (e) {}
       setError("");
-      onSuccess();
+      onSuccess(match);
     } else {
       setError(lt.error);
     }
@@ -678,8 +697,8 @@ export default function App() {
   const [custRestaurant, setCustRestaurant] = useState(urlTarget ? urlTarget.restId : "r1");
   const [custTable, setCustTable] = useState(urlTarget ? urlTarget.table : 7);
   const [tab, setTab] = useState("dashboard");
-  const [isAuthed, setIsAuthed] = useState(() => {
-    try { return sessionStorage.getItem(AUTH_SESSION_KEY) === "1"; } catch (e) { return false; }
+  const [authUserId, setAuthUserId] = useState(() => {
+    try { return sessionStorage.getItem(AUTH_SESSION_KEY) || null; } catch (e) { return null; }
   });
   const [isMobile, setIsMobile] = useState(typeof window !== "undefined" ? window.innerWidth < 860 : false);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -792,9 +811,46 @@ export default function App() {
     });
   }, []);
 
+  const clearFeedback = useCallback(() => {
+    setData((prev) => {
+      const next = { ...prev, feedback: [], complaints: {} };
+      saveData(next);
+      return next;
+    });
+  }, []);
+
+  const addUser = useCallback((username, password, permissions) => {
+    setData((prev) => {
+      if ((prev.users || []).length >= MAX_USERS) return prev;
+      const id = `u-${Date.now()}`;
+      const next = { ...prev, users: [...(prev.users || []), { id, username, password, role: "staff", permissions }] };
+      saveData(next);
+      return next;
+    });
+  }, []);
+
+  const editUser = useCallback((id, patch) => {
+    setData((prev) => {
+      const next = { ...prev, users: (prev.users || []).map((u) => (u.id === id ? { ...u, ...patch } : u)) };
+      saveData(next);
+      return next;
+    });
+  }, []);
+
+  const deleteUser = useCallback((id) => {
+    setData((prev) => {
+      const next = { ...prev, users: (prev.users || []).filter((u) => u.id !== id) };
+      saveData(next);
+      return next;
+    });
+  }, []);
+
   if (!data) {
     return <div style={{ padding: 60, textAlign: "center", color: T.slate, fontFamily: "Inter, sans-serif" }}>Loading…</div>;
   }
+
+  const currentUser = (data.users || []).find((u) => u.id === authUserId) || null;
+  const isAuthed = !!currentUser;
 
   return (
     <div style={{
@@ -805,7 +861,11 @@ export default function App() {
       <style>{FONTS_CSS}</style>
       {mode === "customer" ? (
         <div style={{ maxWidth: 480, margin: "0 auto", background: T.paper, minHeight: 600, boxShadow: `0 0 0 1px ${T.line}` }}>
-          <div style={{ padding: "10px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", background: T.ink }}>
+          <div style={{ padding: "10px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", background: T.ink, gap: 8 }}>
+            <button onClick={() => setMode("owner")} title={lang === "ru" ? "Назад" : lang === "en" ? "Back" : "Orqaga"}
+              style={{ background: "transparent", border: "none", color: T.paper, cursor: "pointer", display: "flex", alignItems: "center", padding: 4 }}>
+              <ChevronLeft size={20} />
+            </button>
             <select value={custRestaurant} onChange={(e) => setCustRestaurant(e.target.value)}
               style={{ background: "transparent", color: T.paper, border: "none", fontSize: 12, fontWeight: 600 }}>
               {data.restaurants.map((r) => <option key={r.id} value={r.id} style={{ color: "#000" }}>{r.name}</option>)}
@@ -814,6 +874,14 @@ export default function App() {
               style={{ background: "transparent", color: T.paper, border: "none", fontSize: 12, fontWeight: 600 }}>
               {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => <option key={n} value={n} style={{ color: "#000" }}>{t.table} {n}</option>)}
             </select>
+            <div style={{ display: "flex", gap: 4 }}>
+              {["uz", "ru", "en"].map((l) => (
+                <button key={l} onClick={() => setLang(l)}
+                  style={{ padding: "3px 6px", borderRadius: 6, border: `1px solid ${lang === l ? T.amber : "rgba(255,255,255,0.25)"}`, background: lang === l ? T.amberSoft : "transparent", color: lang === l ? T.amberDeep : T.paper, fontSize: 10.5, fontWeight: 700, cursor: "pointer", textTransform: "uppercase" }}>
+                  {l}
+                </button>
+              ))}
+            </div>
           </div>
           <CustomerFlow
             t={t}
@@ -826,7 +894,7 @@ export default function App() {
           />
         </div>
       ) : !isAuthed ? (
-        <LoginScreen lang={lang} onSuccess={() => setIsAuthed(true)} />
+        <LoginScreen lang={lang} users={data.users} onSuccess={(user) => setAuthUserId(user.id)} />
       ) : (
         <OwnerShell
           t={t} lang={lang} setLang={setLang} data={data} tab={tab} setTab={setTab}
@@ -845,10 +913,15 @@ export default function App() {
           deleteRestaurant={deleteRestaurant}
           editEmployee={editEmployee}
           deleteEmployee={deleteEmployee}
+          clearFeedback={clearFeedback}
+          currentUser={currentUser}
+          addUser={addUser}
+          editUser={editUser}
+          deleteUser={deleteUser}
           onSwitchToCustomer={() => setMode("customer")}
           onLogout={() => {
             try { sessionStorage.removeItem(AUTH_SESSION_KEY); } catch (e) {}
-            setIsAuthed(false);
+            setAuthUserId(null);
           }}
           copiedId={copiedId} setCopiedId={setCopiedId}
         />
@@ -862,9 +935,9 @@ export default function App() {
 /* ---------------------------------------------------------------- */
 function OwnerShell(props) {
   const { t, lang, setLang, data, tab, setTab, isMobile, moreOpen, setMoreOpen,
-    sidebarOpen, setSidebarOpen, onSwitchToCustomer, onLogout } = props;
+    sidebarOpen, setSidebarOpen, onSwitchToCustomer, onLogout, currentUser } = props;
 
-  const NAV = [
+  const ALL_NAV = [
     { id: "dashboard", label: t.dashboard, icon: LayoutDashboard },
     { id: "feedback", label: t.feedback, icon: MessageSquare },
     { id: "complaints", label: t.complaints, icon: AlertTriangle },
@@ -873,7 +946,9 @@ function OwnerShell(props) {
     { id: "qr", label: t.qr, icon: QrCode },
     { id: "settings", label: t.settings, icon: Settings },
   ];
-  const mobilePrimary = ["dashboard", "feedback", "complaints", "employees"];
+  const canSee = (id) => id === "settings" || !currentUser || currentUser.role === "admin" || (currentUser.permissions && currentUser.permissions[id]);
+  const NAV = ALL_NAV.filter((n) => canSee(n.id));
+  const mobilePrimary = ["dashboard", "feedback", "complaints", "employees"].filter((id) => canSee(id));
   const mobileMore = NAV.filter((n) => !mobilePrimary.includes(n.id));
 
   return (
@@ -919,7 +994,7 @@ function OwnerShell(props) {
           {tab === "employees" && <EmployeesTab t={t} data={data} isMobile={isMobile} {...props} />}
           {tab === "restaurants" && <RestaurantsTab t={t} data={data} isMobile={isMobile} {...props} />}
           {tab === "qr" && <QrTab t={t} data={data} {...props} />}
-          {tab === "settings" && <SettingsTab t={t} lang={lang} setLang={setLang} />}
+          {tab === "settings" && <SettingsTab t={t} lang={lang} setLang={setLang} currentUser={currentUser} data={data} {...props} />}
         </div>
       </div>
 
@@ -969,20 +1044,43 @@ function OwnerShell(props) {
   );
 }
 
+function LiveClock({ lang, isMobile }) {
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000 * 30);
+    return () => clearInterval(id);
+  }, []);
+  const localeMap = { uz: "uz-UZ", ru: "ru-RU", en: "en-US" };
+  const locale = localeMap[lang] || "uz-UZ";
+  const dateStr = now.toLocaleDateString(locale, { day: "2-digit", month: "long", year: "numeric" });
+  const timeStr = now.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, color: T.slate, fontSize: isMobile ? 11.5 : 12.5, fontWeight: 500 }}>
+      <Clock size={14} />
+      <span>{dateStr}</span>
+      <span style={{ color: T.ink, fontWeight: 700 }}>{timeStr}</span>
+    </div>
+  );
+}
+
 function TopBar({ t, lang, setLang, isMobile, navLabel }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: isMobile ? "16px 16px 8px" : "18px 26px", borderBottom: `1px solid ${T.line}`, background: T.paper }}>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: isMobile ? "16px 16px 8px" : "18px 26px", borderBottom: `1px solid ${T.line}`, background: T.paper, flexWrap: "wrap", gap: 8 }}>
       <div style={{ fontFamily: "'Fraunces', serif", fontSize: isMobile ? 19 : 21, fontWeight: 500 }}>{navLabel}</div>
-      <div style={{ display: "flex", gap: 6 }}>
-        {["uz", "ru", "en"].map((l) => (
-          <button key={l} onClick={() => setLang(l)}
-            style={{
-              padding: "5px 9px", borderRadius: 7, border: `1px solid ${lang === l ? T.amber : T.line}`,
-              background: lang === l ? T.amberSoft : "transparent", color: lang === l ? T.amberDeep : T.slate,
-              fontSize: 11.5, fontWeight: 700, cursor: "pointer", textTransform: "uppercase",
-            }}>{l}</button>
-        ))}
+      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        {!isMobile && <LiveClock lang={lang} isMobile={isMobile} />}
+        <div style={{ display: "flex", gap: 6 }}>
+          {["uz", "ru", "en"].map((l) => (
+            <button key={l} onClick={() => setLang(l)}
+              style={{
+                padding: "5px 9px", borderRadius: 7, border: `1px solid ${lang === l ? T.amber : T.line}`,
+                background: lang === l ? T.amberSoft : "transparent", color: lang === l ? T.amberDeep : T.slate,
+                fontSize: 11.5, fontWeight: 700, cursor: "pointer", textTransform: "uppercase",
+              }}>{l}</button>
+          ))}
+        </div>
       </div>
+      {isMobile && <LiveClock lang={lang} isMobile={isMobile} />}
     </div>
   );
 }
@@ -1226,9 +1324,11 @@ function exportCsv(rows, filename) {
 }
 
 function FeedbackTab(props) {
-  const { t, data, isMobile, fRestaurant, setFRestaurant, fEmployee, setFEmployee, fRange, setFRange, fSentiment, setFSentiment, search, setSearch } = props;
+  const { t, data, isMobile, fRestaurant, setFRestaurant, fEmployee, setFEmployee, fRange, setFRange, fSentiment, setFSentiment, search, setSearch, lang, clearFeedback } = props;
   const empName = (id) => data.employees.find((e) => e.id === id)?.name || "—";
   const restName = (id) => data.restaurants.find((r) => r.id === id)?.name || "—";
+  const clearLabel = lang === "ru" ? "Очистить всё" : lang === "en" ? "Clear all" : "Barchasini tozalash";
+  const confirmMsg = lang === "ru" ? "Удалить все отзывы и жалобы? Это действие необратимо." : lang === "en" ? "Delete all feedback and complaints? This cannot be undone." : "Barcha fikr va shikoyatlar o'chirilsinmi? Bu amalni qaytarib bo'lmaydi.";
 
   const filtered = useMemo(() => {
     return data.feedback
@@ -1243,15 +1343,23 @@ function FeedbackTab(props) {
   return (
     <div>
       <FilterBar {...props} />
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, gap: 8, flexWrap: "wrap" }}>
         <div style={{ fontSize: 12.5, color: T.slate }}>{filtered.length} {t.reviews}</div>
-        <button onClick={() => exportCsv(filtered.map((f) => ({
-          date: f.createdAt, restaurant: restName(f.restaurantId), table: f.tableId, employee: empName(f.employeeId),
-          overall: f.overall, sentiment: f.sentiment, comment: f.comment,
-        })), "feedback.csv")}
-          style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", borderRadius: 9, border: `1px solid ${T.line}`, background: T.card, fontSize: 12.5, cursor: "pointer" }}>
-          <Download size={13} /> {t.exportData}
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => exportCsv(filtered.map((f) => ({
+            date: f.createdAt, restaurant: restName(f.restaurantId), table: f.tableId, employee: empName(f.employeeId),
+            overall: f.overall, sentiment: f.sentiment, comment: f.comment,
+          })), "feedback.csv")}
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", borderRadius: 9, border: `1px solid ${T.line}`, background: T.card, fontSize: 12.5, cursor: "pointer" }}>
+            <Download size={13} /> {t.exportData}
+          </button>
+          {clearFeedback && (
+            <button onClick={() => { if (window.confirm(confirmMsg)) clearFeedback(); }}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", borderRadius: 9, border: `1px solid ${T.roseSoft}`, background: T.roseSoft, color: T.rose, fontSize: 12.5, cursor: "pointer", fontWeight: 600 }}>
+              <Trash2 size={13} /> {clearLabel}
+            </button>
+          )}
+        </div>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {filtered.slice(0, 60).map((f) => (
@@ -1281,10 +1389,12 @@ function FeedbackTab(props) {
 /* COMPLAINTS TAB                                                    */
 /* ---------------------------------------------------------------- */
 function ComplaintsTab(props) {
-  const { t, data, isMobile, fComplaintStatus, setFComplaintStatus, fRestaurant, setFRestaurant, updateComplaint, search, setSearch } = props;
+  const { t, data, isMobile, fComplaintStatus, setFComplaintStatus, fRestaurant, setFRestaurant, updateComplaint, search, setSearch, lang, clearFeedback } = props;
   const A = useAggregates(data);
   const empName = (id) => data.employees.find((e) => e.id === id)?.name || "—";
   const restName = (id) => data.restaurants.find((r) => r.id === id)?.name || "—";
+  const clearLabel = lang === "ru" ? "Очистить всё" : lang === "en" ? "Clear all" : "Barchasini tozalash";
+  const confirmMsg = lang === "ru" ? "Удалить все отзывы и жалобы? Это действие необратимо." : lang === "en" ? "Delete all feedback and complaints? This cannot be undone." : "Barcha fikr va shikoyatlar o'chirilsinmi? Bu amalni qaytarib bo'lmaydi.";
 
   const filtered = A.allComplaints
     .filter((c) => fComplaintStatus === "all" || c.status === fComplaintStatus)
@@ -1296,20 +1406,28 @@ function ComplaintsTab(props) {
 
   return (
     <div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
-        <div style={{ position: "relative", flex: isMobile ? "1 1 100%" : "0 0 220px" }}>
-          <Search size={14} color={T.slate} style={{ position: "absolute", left: 10, top: 10 }} />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t.search}
-            style={{ padding: "8px 10px 8px 30px", borderRadius: 9, border: `1px solid ${T.line}`, background: T.card, fontSize: 12.5, width: "100%", boxSizing: "border-box" }} />
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16, justifyContent: "space-between" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          <div style={{ position: "relative", flex: isMobile ? "1 1 100%" : "0 0 220px" }}>
+            <Search size={14} color={T.slate} style={{ position: "absolute", left: 10, top: 10 }} />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t.search}
+              style={{ padding: "8px 10px 8px 30px", borderRadius: 9, border: `1px solid ${T.line}`, background: T.card, fontSize: 12.5, width: "100%", boxSizing: "border-box" }} />
+          </div>
+          <select value={fRestaurant} onChange={(e) => setFRestaurant(e.target.value)} style={{ padding: "8px 10px", borderRadius: 9, border: `1px solid ${T.line}`, background: T.card, fontSize: 12.5 }}>
+            <option value="all">{t.allRestaurants}</option>
+            {data.restaurants.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </select>
+          <select value={fComplaintStatus} onChange={(e) => setFComplaintStatus(e.target.value)} style={{ padding: "8px 10px", borderRadius: 9, border: `1px solid ${T.line}`, background: T.card, fontSize: 12.5 }}>
+            <option value="all">{t.allStatuses}</option>
+            {statuses.map((s) => <option key={s} value={s}>{t[`complaintStatus_${s}`]}</option>)}
+          </select>
         </div>
-        <select value={fRestaurant} onChange={(e) => setFRestaurant(e.target.value)} style={{ padding: "8px 10px", borderRadius: 9, border: `1px solid ${T.line}`, background: T.card, fontSize: 12.5 }}>
-          <option value="all">{t.allRestaurants}</option>
-          {data.restaurants.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-        </select>
-        <select value={fComplaintStatus} onChange={(e) => setFComplaintStatus(e.target.value)} style={{ padding: "8px 10px", borderRadius: 9, border: `1px solid ${T.line}`, background: T.card, fontSize: 12.5 }}>
-          <option value="all">{t.allStatuses}</option>
-          {statuses.map((s) => <option key={s} value={s}>{t[`complaintStatus_${s}`]}</option>)}
-        </select>
+        {clearFeedback && (
+          <button onClick={() => { if (window.confirm(confirmMsg)) clearFeedback(); }}
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", borderRadius: 9, border: `1px solid ${T.roseSoft}`, background: T.roseSoft, color: T.rose, fontSize: 12.5, cursor: "pointer", fontWeight: 600 }}>
+            <Trash2 size={13} /> {clearLabel}
+          </button>
+        )}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {filtered.map((c) => (
@@ -1624,7 +1742,178 @@ function QrTab({ t, data, copiedId, setCopiedId }) {
 /* ---------------------------------------------------------------- */
 /* SETTINGS TAB                                                      */
 /* ---------------------------------------------------------------- */
-function SettingsTab({ t, lang, setLang }) {
+const SETTINGS_TXT = {
+  uz: {
+    myAccount: "Mening hisobim", currentPassword: "Joriy parol", newPassword: "Yangi parol",
+    confirmPassword: "Yangi parolni takrorlang", changePassword: "Parolni o'zgartirish",
+    passwordChanged: "Parol muvaffaqiyatli o'zgartirildi", wrongCurrent: "Joriy parol noto'g'ri",
+    mismatch: "Yangi parollar mos kelmadi", tooShort: "Parol kamida 4 belgidan iborat bo'lsin",
+    users: "Foydalanuvchilar", addUser: "Foydalanuvchi qo'shish", username: "Login", password: "Parol",
+    permissions: "Ruxsatlar", save: "Saqlash", delete: "O'chirish", admin: "Bosh admin",
+    maxReached: "Ko'pi bilan 5 ta foydalanuvchi qo'shish mumkin", cancel: "Bekor qilish",
+    deleteConfirm: "Bu foydalanuvchini o'chirasizmi?", edit: "Tahrirlash",
+  },
+  ru: {
+    myAccount: "Мой аккаунт", currentPassword: "Текущий пароль", newPassword: "Новый пароль",
+    confirmPassword: "Повторите новый пароль", changePassword: "Изменить пароль",
+    passwordChanged: "Пароль успешно изменён", wrongCurrent: "Текущий пароль неверен",
+    mismatch: "Новые пароли не совпадают", tooShort: "Пароль должен быть не менее 4 символов",
+    users: "Пользователи", addUser: "Добавить пользователя", username: "Логин", password: "Пароль",
+    permissions: "Права доступа", save: "Сохранить", delete: "Удалить", admin: "Гл. админ",
+    maxReached: "Можно добавить не более 5 пользователей", cancel: "Отмена",
+    deleteConfirm: "Удалить этого пользователя?", edit: "Изменить",
+  },
+  en: {
+    myAccount: "My account", currentPassword: "Current password", newPassword: "New password",
+    confirmPassword: "Confirm new password", changePassword: "Change password",
+    passwordChanged: "Password changed successfully", wrongCurrent: "Current password is incorrect",
+    mismatch: "New passwords do not match", tooShort: "Password must be at least 4 characters",
+    users: "Users", addUser: "Add user", username: "Username", password: "Password",
+    permissions: "Permissions", save: "Save", delete: "Delete", admin: "Main admin",
+    maxReached: "You can add up to 5 users", cancel: "Cancel",
+    deleteConfirm: "Delete this user?", edit: "Edit",
+  },
+};
+
+function ChangePasswordCard({ st, lang, currentUser, editUser }) {
+  const [cur, setCur] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [msg, setMsg] = useState(null);
+
+  const submit = (e) => {
+    e.preventDefault();
+    if (!currentUser || cur !== currentUser.password) { setMsg({ type: "error", text: st.wrongCurrent }); return; }
+    if (next.length < 4) { setMsg({ type: "error", text: st.tooShort }); return; }
+    if (next !== confirm) { setMsg({ type: "error", text: st.mismatch }); return; }
+    editUser(currentUser.id, { password: next });
+    setCur(""); setNext(""); setConfirm("");
+    setMsg({ type: "ok", text: st.passwordChanged });
+  };
+
+  return (
+    <div style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, padding: 18, marginBottom: 14 }}>
+      <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>{st.myAccount} — {currentUser?.username}</div>
+      <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 320 }}>
+        <input type="password" placeholder={st.currentPassword} value={cur} onChange={(e) => setCur(e.target.value)}
+          style={{ padding: "9px 12px", borderRadius: 9, border: `1px solid ${T.line}`, fontSize: 13.5 }} />
+        <input type="password" placeholder={st.newPassword} value={next} onChange={(e) => setNext(e.target.value)}
+          style={{ padding: "9px 12px", borderRadius: 9, border: `1px solid ${T.line}`, fontSize: 13.5 }} />
+        <input type="password" placeholder={st.confirmPassword} value={confirm} onChange={(e) => setConfirm(e.target.value)}
+          style={{ padding: "9px 12px", borderRadius: 9, border: `1px solid ${T.line}`, fontSize: 13.5 }} />
+        {msg && <div style={{ fontSize: 12.5, color: msg.type === "error" ? T.rose : T.sage }}>{msg.text}</div>}
+        <button type="submit" style={{ padding: "10px 0", borderRadius: 9, border: "none", background: T.ink, color: T.paper, fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>
+          {st.changePassword}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function UserRow({ u, st, isSelf, addUser, editUser, deleteUser }) {
+  const [editing, setEditing] = useState(false);
+  const [username, setUsername] = useState(u.username);
+  const [password, setPassword] = useState(u.password);
+  const [perms, setPerms] = useState(u.permissions || {});
+
+  const togglePerm = (id) => setPerms((p) => ({ ...p, [id]: !p[id] }));
+  const save = () => { editUser(u.id, { username, password, permissions: perms }); setEditing(false); };
+
+  return (
+    <div style={{ border: `1px solid ${T.line}`, borderRadius: 12, padding: 14, marginBottom: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+        <div style={{ fontWeight: 600, fontSize: 13.5 }}>
+          {u.username} {u.role === "admin" && <span style={{ marginLeft: 6, fontSize: 10.5, color: T.amberDeep, background: T.amberSoft, padding: "2px 7px", borderRadius: 6 }}>{st.admin}</span>}
+        </div>
+        {u.role !== "admin" && (
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => setEditing((v) => !v)} style={{ fontSize: 12, color: T.amberDeep, background: "none", border: "none", cursor: "pointer" }}>{st.edit}</button>
+            <button onClick={() => { if (window.confirm(st.deleteConfirm)) deleteUser(u.id); }} style={{ fontSize: 12, color: T.rose, background: "none", border: "none", cursor: "pointer" }}>{st.delete}</button>
+          </div>
+        )}
+      </div>
+      {editing && (
+        <div style={{ marginTop: 12 }}>
+          <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+            <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder={st.username}
+              style={{ padding: "8px 10px", borderRadius: 8, border: `1px solid ${T.line}`, fontSize: 13 }} />
+            <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder={st.password}
+              style={{ padding: "8px 10px", borderRadius: 8, border: `1px solid ${T.line}`, fontSize: 13 }} />
+          </div>
+          <div style={{ fontSize: 12, color: T.slate, marginBottom: 6 }}>{st.permissions}</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
+            {PERMISSION_TABS.map((id) => (
+              <label key={id} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12.5, cursor: "pointer" }}>
+                <input type="checkbox" checked={!!perms[id]} onChange={() => togglePerm(id)} /> {id}
+              </label>
+            ))}
+          </div>
+          <button onClick={save} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: T.ink, color: T.paper, fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+            {st.save}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function UsersManager({ st, data, addUser, editUser, deleteUser }) {
+  const [adding, setAdding] = useState(false);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [perms, setPerms] = useState(Object.fromEntries(PERMISSION_TABS.map((k) => [k, true])));
+  const users = data.users || [];
+  const canAdd = users.length < MAX_USERS;
+
+  const submit = () => {
+    if (!username || !password) return;
+    addUser(username, password, perms);
+    setUsername(""); setPassword(""); setPerms(Object.fromEntries(PERMISSION_TABS.map((k) => [k, true])));
+    setAdding(false);
+  };
+
+  return (
+    <div style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, padding: 18, marginBottom: 14 }}>
+      <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+        <Users size={15} /> {st.users} ({users.length}/{MAX_USERS})
+      </div>
+      {users.map((u) => (
+        <UserRow key={u.id} u={u} st={st} addUser={addUser} editUser={editUser} deleteUser={deleteUser} />
+      ))}
+      {!adding && canAdd && (
+        <button onClick={() => setAdding(true)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 14px", borderRadius: 9, border: `1px dashed ${T.lineStrong}`, background: "none", color: T.amberDeep, fontSize: 13, cursor: "pointer", marginTop: 6 }}>
+          <Plus size={14} /> {st.addUser}
+        </button>
+      )}
+      {!canAdd && <div style={{ fontSize: 12, color: T.slate, marginTop: 6 }}>{st.maxReached}</div>}
+      {adding && (
+        <div style={{ border: `1px solid ${T.line}`, borderRadius: 12, padding: 14, marginTop: 8 }}>
+          <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+            <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder={st.username}
+              style={{ padding: "8px 10px", borderRadius: 8, border: `1px solid ${T.line}`, fontSize: 13 }} />
+            <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder={st.password}
+              style={{ padding: "8px 10px", borderRadius: 8, border: `1px solid ${T.line}`, fontSize: 13 }} />
+          </div>
+          <div style={{ fontSize: 12, color: T.slate, marginBottom: 6 }}>{st.permissions}</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
+            {PERMISSION_TABS.map((id) => (
+              <label key={id} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12.5, cursor: "pointer" }}>
+                <input type="checkbox" checked={!!perms[id]} onChange={() => setPerms((p) => ({ ...p, [id]: !p[id] }))} /> {id}
+              </label>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={submit} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: T.ink, color: T.paper, fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>{st.save}</button>
+            <button onClick={() => setAdding(false)} style={{ padding: "8px 16px", borderRadius: 8, border: `1px solid ${T.line}`, background: "none", fontSize: 12.5, cursor: "pointer" }}>{st.cancel}</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SettingsTab({ t, lang, setLang, currentUser, data, addUser, editUser, deleteUser }) {
+  const st = SETTINGS_TXT[lang] || SETTINGS_TXT.uz;
   return (
     <div style={{ maxWidth: 480 }}>
       <div style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, padding: 18, marginBottom: 14 }}>
@@ -1638,6 +1927,13 @@ function SettingsTab({ t, lang, setLang }) {
           ))}
         </div>
       </div>
+
+      {currentUser && <ChangePasswordCard st={st} lang={lang} currentUser={currentUser} editUser={editUser} />}
+
+      {currentUser && currentUser.role === "admin" && (
+        <UsersManager st={st} data={data} addUser={addUser} editUser={editUser} deleteUser={deleteUser} />
+      )}
+
       <div style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, padding: 18 }}>
         <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8 }}>{t.role_owner}</div>
         <div style={{ fontSize: 12.5, color: T.slate, lineHeight: 1.6 }}>{t.note}</div>
