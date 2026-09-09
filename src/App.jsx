@@ -3,6 +3,7 @@ import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
+import { supabase } from "./supabaseClient.js";
 import {
   LayoutDashboard, MessageSquare, AlertTriangle, Users, Building2,
   QrCode, Settings, Menu, X, Search, Filter, Download, Plus, Star,
@@ -262,20 +263,21 @@ function buildSeedData() {
 /* ---------------------------------------------------------------- */
 /* STORAGE HELPERS                                                   */
 /* ---------------------------------------------------------------- */
-const STORE_KEY = "rfs-data-v1";
+const STORE_KEY = "rfs-data-v1"; // shared key so every device reads/writes the same row
 
 async function loadData() {
   try {
-    const res = await window.storage.get(STORE_KEY, true);
-    if (res && res.value) return JSON.parse(res.value);
-  } catch (e) { /* not found */ }
+    const { data, error } = await supabase.from("store").select("value").eq("key", STORE_KEY).maybeSingle();
+    if (error) throw error;
+    if (data && data.value) return data.value;
+  } catch (e) { /* fall through to seed */ }
   const seed = buildSeedData();
-  try { await window.storage.set(STORE_KEY, JSON.stringify(seed), true); } catch (e) {}
+  try { await supabase.from("store").upsert({ key: STORE_KEY, value: seed }); } catch (e) {}
   return seed;
 }
 
 async function saveData(data) {
-  try { await window.storage.set(STORE_KEY, JSON.stringify(data), true); } catch (e) {}
+  try { await supabase.from("store").upsert({ key: STORE_KEY, value: data }); } catch (e) {}
 }
 
 /* ---------------------------------------------------------------- */
@@ -624,6 +626,20 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const channel = supabase
+      .channel("store-changes")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "store", filter: `key=eq.${STORE_KEY}` },
+        (payload) => {
+          if (payload.new && payload.new.value) setData(payload.new.value);
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 860);
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
@@ -724,16 +740,6 @@ export default function App() {
       <style>{FONTS_CSS}</style>
       {mode === "customer" ? (
         <div style={{ maxWidth: 480, margin: "0 auto", background: T.paper, minHeight: 600, boxShadow: `0 0 0 1px ${T.line}` }}>
-          <div style={{ padding: "10px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", background: T.ink }}>
-            <select value={custRestaurant} onChange={(e) => setCustRestaurant(e.target.value)}
-              style={{ background: "transparent", color: T.paper, border: "none", fontSize: 12, fontWeight: 600 }}>
-              {data.restaurants.map((r) => <option key={r.id} value={r.id} style={{ color: "#000" }}>{r.name}</option>)}
-            </select>
-            <select value={custTable} onChange={(e) => setCustTable(+e.target.value)}
-              style={{ background: "transparent", color: T.paper, border: "none", fontSize: 12, fontWeight: 600 }}>
-              {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => <option key={n} value={n} style={{ color: "#000" }}>{t.table} {n}</option>)}
-            </select>
-          </div>
           <CustomerFlow
             t={t}
             restaurants={data.restaurants}
