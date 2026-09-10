@@ -1377,7 +1377,7 @@ function FeedbackTab(props) {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
               <div>
                 <div style={{ fontWeight: 600, fontSize: 13.5 }}>{restName(f.restaurantId)} · {t.table} {f.tableId}</div>
-                <div style={{ fontSize: 12, color: T.slate, marginTop: 2 }}>{empName(f.employeeId)} · {new Date(f.createdAt).toLocaleDateString()}</div>
+                <div style={{ fontSize: 12, color: T.slate, marginTop: 2 }}>{empName(f.employeeId)} · {new Date(f.createdAt).toLocaleDateString()} · {new Date(f.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <Pill tone={f.sentiment === "positive" ? "positive" : f.sentiment === "negative" ? "negative" : "amber"}>
@@ -1445,7 +1445,7 @@ function ComplaintsTab(props) {
             <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
               <div>
                 <div style={{ fontWeight: 600, fontSize: 13.5 }}>{restName(c.feedback.restaurantId)} · {t.table} {c.feedback.tableId}</div>
-                <div style={{ fontSize: 12, color: T.slate, marginTop: 2 }}>{empName(c.feedback.employeeId)} · {new Date(c.feedback.createdAt).toLocaleDateString()}</div>
+                <div style={{ fontSize: 12, color: T.slate, marginTop: 2 }}>{empName(c.feedback.employeeId)} · {new Date(c.feedback.createdAt).toLocaleDateString()} · {new Date(c.feedback.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · {new Date(c.feedback.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
               </div>
               <Pill tone={STATUS_TONE[c.status]}>{t[`complaintStatus_${c.status}`]}</Pill>
             </div>
